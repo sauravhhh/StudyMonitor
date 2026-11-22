@@ -1,8 +1,8 @@
 /* StudyMonitor service worker.
    NOTE: bump the cache name below (v1 -> v2 -> ...) every time you change
    index.html, manifest.json or an icon, or phones will keep the old files. */
-var CACHE = 'studymonitor-v1';
-var ASSETS = ['.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
+var CACHE = 'studymonitor-v2';
+var ASSETS = ['.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'alarm.mp3', 'faudio.mp3', 'paudio.mp3'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }));
