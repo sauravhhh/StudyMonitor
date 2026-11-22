@@ -106,8 +106,7 @@
   </div>
 
   <footer>
-    Detects sleep, face cover and phone use — same rules as the desktop original.<br>
-    Inspired by Smart Study Monitor by Dibyendu Pradhan
+    Detects sleep, face cover and phone use — same rules as the desktop original.
   </footer>
 </div>
 
@@ -246,7 +245,12 @@ window.StudyLogic = {
     stopAlarm();
   }
 
-  /* ---- WebAudio alarms: three distinct patterns, no audio files ---- */
+  /* ---- Alarms: the original app's own sounds (alarm.mp3 / faudio.mp3 / paudio.mp3).
+     WebAudio beeps remain only as a fallback if an mp3 cannot play. ---- */
+  var alarmFiles = { sleep: 'alarm.mp3', face: 'faudio.mp3', phone: 'paudio.mp3' };
+  var alarmAudio = {};
+  var alarmFallback = false;
+
   function ensureAudio() {
     if (!audioCtx) {
       var AC = window.AudioContext || window.webkitAudioContext;
@@ -269,9 +273,18 @@ window.StudyLogic = {
     osc.stop(audioCtx.currentTime + dur);
   }
 
-  function startAlarm(type) {
-    stopAlarm();
-    if (muted || !audioCtx) return;
+  function getAlarmAudio(type) {
+    if (!alarmAudio[type]) {
+      var a = new Audio(alarmFiles[type]);
+      a.preload = 'auto';
+      a.loop = true;
+      a.addEventListener('error', function () { alarmFallback = true; });
+      alarmAudio[type] = a;
+    }
+    return alarmAudio[type];
+  }
+
+  function startAlarmBeeps(type) {
     var patterns = {
       sleep: function () { beep(880, 0.12); },                    /* rapid beeps */
       face: function () { beep(440, 0.9); },                      /* long tone */
@@ -282,8 +295,22 @@ window.StudyLogic = {
     alarmTimer = setInterval(function () { if (!muted) patterns[type](); }, intervals[type]);
   }
 
+  function startAlarm(type) {
+    stopAlarm();
+    if (muted) return;
+    if (!alarmFallback) {
+      var a = getAlarmAudio(type);
+      var p = a.play();
+      if (p && p.catch) p.catch(function () { alarmFallback = true; startAlarmBeeps(type); });
+      return;
+    }
+    if (!audioCtx) return;
+    startAlarmBeeps(type);
+  }
+
   function stopAlarm() {
     if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; }
+    for (var k in alarmAudio) { var a = alarmAudio[k]; a.pause(); a.currentTime = 0; }
   }
 
   /* ---- Detection loop ---- */
