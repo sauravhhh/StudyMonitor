@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>StudyMonitor — Stay Focused</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .app { max-width: 480px; margin: 0 auto; padding: 16px 16px 28px; }
+  header { text-align: center; padding: 10px 0 14px; }
+  header h1 { font-size: 26px; letter-spacing: 0.5px; color: #fff; }
+  header h1 span { color: #38bdf8; }
+  header p { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+  .status { text-align: center; font-size: 13px; color: #94a3b8; background: #1e293b; border: 1px solid #334155; border-radius: 999px; padding: 7px 12px; margin-bottom: 12px; }
+  .status.live { color: #4ade80; border-color: #166534; }
+  .status.warn { color: #fbbf24; border-color: #92400e; }
+  .status.err { color: #f87171; border-color: #7f1d1d; }
+  .video-wrap { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #020617; border-radius: 16px; overflow: hidden; border: 1px solid #334155; }
+  .video-wrap video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+  .video-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .video-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #64748b; font-size: 14px; text-align: center; padding: 20px; }
+  .video-placeholder .cam-icon { font-size: 44px; }
+  .banner { display: none; position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 12px; text-align: center; font-size: 24px; font-weight: 800; letter-spacing: 0.5px; color: #fff; background: rgba(220, 38, 38, 0.94); animation: flash 0.7s infinite alternate; }
+  .banner.show { display: block; }
+  @keyframes flash { from { background: rgba(220, 38, 38, 0.94); } to { background: rgba(153, 27, 27, 0.94); } }
+  .cam-error { display: none; position: absolute; inset: 0; background: #020617; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+  .cam-error.show { display: flex; }
+  .cam-error p { font-size: 14px; line-height: 1.5; color: #cbd5e1; }
+  .btn { display: block; width: 100%; border: none; border-radius: 14px; padding: 16px; font-size: 19px; font-weight: 700; cursor: pointer; }
+  .btn-start { background: #16a34a; color: #fff; margin-top: 14px; }
+  .btn-stop { background: #dc2626; color: #fff; margin-top: 14px; }
+  .btn-retry { background: #0284c7; color: #fff; padding: 12px 26px; font-size: 16px; width: auto; }
+  .btn-mute { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; margin-top: 10px; font-size: 15px; padding: 11px; }
+  .ratio { text-align: center; margin-top: 14px; font-size: 15px; color: #94a3b8; }
+  .ratio b { font-size: 26px; color: #fff; font-variant-numeric: tabular-nums; }
+  .ratio .closed { color: #f87171; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .card { background: #1e293b; border: 2px solid #334155; border-radius: 14px; padding: 12px 8px; text-align: center; transition: border-color 0.15s, background 0.15s; }
+  .card .ico { font-size: 26px; }
+  .card .name { font-size: 13px; font-weight: 700; margin-top: 4px; color: #e2e8f0; }
+  .card .count { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .card .count b { color: #fff; font-size: 16px; }
+  .card.active { border-color: #dc2626; background: #450a0a; animation: pulse 0.6s infinite alternate; }
+  @keyframes pulse { from { background: #450a0a; } to { background: #7f1d1d; } }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 12px; text-align: center; }
+  .stat .label { font-size: 12px; color: #94a3b8; }
+  .stat .value { font-size: 22px; font-weight: 700; color: #fff; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  footer { text-align: center; font-size: 12px; color: #64748b; margin-top: 20px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Study<span>Monitor</span></h1>
+    <p>Your camera watches for distractions while you study</p>
+  </header>
+
+  <div class="status" id="status">Tap START to begin</div>
+
+  <div class="video-wrap">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+    <div class="video-placeholder" id="placeholder">
+      <div class="cam-icon">&#128247;</div>
+      <div>Camera preview will appear here</div>
+    </div>
+    <div class="banner" id="banner"></div>
+    <div class="cam-error" id="camError">
+      <p><b>Camera permission needed</b></p>
+      <p>StudyMonitor needs your front camera to watch for sleep, face cover and phone use. Please allow camera access and try again.</p>
+      <button class="btn btn-retry" id="retryBtn">Retry camera</button>
+    </div>
+  </div>
+
+  <button class="btn btn-start" id="startBtn">▶ START MONITORING</button>
+  <button class="btn btn-mute" id="muteBtn">🔔 Sound: ON</button>
+
+  <div class="ratio">Eye ratio: <b id="ratioVal">—</b> <span id="ratioState"></span></div>
+
+  <div class="cards">
+    <div class="card" id="card-sleep">
+      <div class="ico">😴</div>
+      <div class="name">Sleep</div>
+      <div class="count">Alerts: <b id="count-sleep">0</b></div>
+    </div>
+    <div class="card" id="card-face">
+      <div class="ico">🙈</div>
+      <div class="name">Face cover</div>
+      <div class="count">Alerts: <b id="count-face">0</b></div>
+    </div>
+    <div class="card" id="card-phone">
+      <div class="ico">📱</div>
+      <div class="name">Phone</div>
+      <div class="count">Alerts: <b id="count-phone">0</b></div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Focus time</div><div class="value" id="focusTime">00:00</div></div>
+    <div class="stat"><div class="label">Total alerts</div><div class="value" id="totalAlerts">0</div></div>
+  </div>
+
+  <footer>
+    Detects sleep, face cover and phone use — same rules as the desktop original.<br>
+    Inspired by Smart Study Monitor by Dibyendu Pradhan
+  </footer>
+</div>
+
+<script>
+/* ---- Pure detection logic (same rules as the original desktop app) ---- */
+/* Eye ratio = vertical eye opening (landmarks 159 top / 145 bottom) divided
+   by face width (landmarks 130 / 243), x100. Eyes closed when ratio < 11.
+   Sleep = 15 consecutive closed frames. Face cover = 20 consecutive frames
+   with no face. Phone = a "cell phone" detection with confidence > 0.5.
+   Priority when several fire: face cover, then sleep, then phone. */
+var EYE_CLOSED_RATIO = 11;
+var SLEEP_FRAMES = 15;
+var NOFACE_FRAMES = 20;
+var PHONE_SCORE = 0.5;
+
+function _dist(a, b) {
+  var dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function eyeRatio(lm) {
+  if (!lm || !lm[159] || !lm[145] || !lm[130] || !lm[243]) return null;
+  var w = _dist(lm[130], lm[243]);
+  if (w <= 0) return null;
+  return _dist(lm[159], lm[145]) / w * 100;
+}
+
+function createTracker() {
+  var closedFrames = 0, noFaceFrames = 0, phoneGrace = 0, active = null;
+  function update(input) {
+    if (input.facePresent) {
+      noFaceFrames = 0;
+      if (input.ratio !== null && input.ratio !== undefined && input.ratio < EYE_CLOSED_RATIO) closedFrames++;
+      else closedFrames = 0;
+    } else {
+      noFaceFrames++;
+      closedFrames = 0;
+    }
+    if (input.phonePresent) phoneGrace = 5;
+    else if (phoneGrace > 0) phoneGrace--;
+    var sleep = closedFrames >= SLEEP_FRAMES;
+    var face = noFaceFrames >= NOFACE_FRAMES;
+    var phone = phoneGrace > 0;
+    var next = null;
+    if (face) next = 'face';
+    else if (sleep) next = 'sleep';
+    else if (phone) next = 'phone';
+    var changed = next !== active;
+    var prev = active;
+    active = next;
+    return { alert: active, changed: changed, prev: prev };
+  }
+  function reset() { closedFrames = 0; noFaceFrames = 0; phoneGrace = 0; active = null; }
+  return { update: update, reset: reset, get active() { return active; } };
+}
+
+window.StudyLogic = {
+  eyeRatio: eyeRatio, createTracker: createTracker,
+  EYE_CLOSED_RATIO: EYE_CLOSED_RATIO, SLEEP_FRAMES: SLEEP_FRAMES,
+  NOFACE_FRAMES: NOFACE_FRAMES, PHONE_SCORE: PHONE_SCORE
+};
+</script>
+
+<script>
+/* ---- App wiring: camera, loop, alarms, UI ---- */
+(function () {
+  var video = document.getElementById('video');
+  var canvas = document.getElementById('overlay');
+  var ctx = canvas.getContext('2d');
+  var statusEl = document.getElementById('status');
+  var banner = document.getElementById('banner');
+  var placeholder = document.getElementById('placeholder');
+  var camError = document.getElementById('camError');
+  var startBtn = document.getElementById('startBtn');
+  var muteBtn = document.getElementById('muteBtn');
+  var ratioVal = document.getElementById('ratioVal');
+  var ratioState = document.getElementById('ratioState');
+  var focusTimeEl = document.getElementById('focusTime');
+  var totalAlertsEl = document.getElementById('totalAlerts');
+
+  var WARNINGS = {
+    sleep: 'WAKE UP & STUDY!',
+    face: 'DONT COVER YOUR FACE!',
+    phone: 'PUT THE PHONE AWAY!'
+  };
+
+  var monitoring = false;
+  var stream = null;
+  var rafId = null;
+  var tracker = window.StudyLogic.createTracker();
+  var counts = { sleep: 0, face: 0, phone: 0 };
+  var currentAlert = null;
+  var focusMs = 0;
+  var lastTick = 0;
+  var lastTs = 0;
+  var muted = false;
+  var audioCtx = null;
+  var alarmTimer = null;
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function fmtTime(ms) {
+    var s = Math.floor(ms / 1000);
+    var m = Math.floor(s / 60);
+    s = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function updateStats() {
+    focusTimeEl.textContent = fmtTime(focusMs);
+    totalAlertsEl.textContent = String(counts.sleep + counts.face + counts.phone);
+    document.getElementById('count-sleep').textContent = counts.sleep;
+    document.getElementById('count-face').textContent = counts.face;
+    document.getElementById('count-phone').textContent = counts.phone;
+  }
+
+  function showAlert(type) {
+    currentAlert = type;
+    banner.textContent = WARNINGS[type];
+    banner.classList.add('show');
+    ['sleep', 'face', 'phone'].forEach(function (t) {
+      document.getElementById('card-' + t).classList.toggle('active', t === type);
+    });
+    startAlarm(type);
+  }
+
+  function clearAlert() {
+    currentAlert = null;
+    banner.classList.remove('show');
+    ['sleep', 'face', 'phone'].forEach(function (t) {
+      document.getElementById('card-' + t).classList.remove('active');
+    });
+    stopAlarm();
+  }
+
+  /* ---- WebAudio alarms: three distinct patterns, no audio files ---- */
+  function ensureAudio() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function beep(freq, dur) {
+    if (!audioCtx || muted) return;
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  }
+
+  function startAlarm(type) {
+    stopAlarm();
+    if (muted || !audioCtx) return;
+    var patterns = {
+      sleep: function () { beep(880, 0.12); },                    /* rapid beeps */
+      face: function () { beep(440, 0.9); },                      /* long tone */
+      phone: function () { beep(660, 0.18); setTimeout(function () { beep(520, 0.18); }, 220); } /* two-tone */
+    };
+    var intervals = { sleep: 280, face: 1400, phone: 700 };
+    patterns[type]();
+    alarmTimer = setInterval(function () { if (!muted) patterns[type](); }, intervals[type]);
+  }
+
+  function stopAlarm() {
+    if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; }
+  }
+
+  /* ---- Detection loop ---- */
+  function drawOverlay(landmarks, phones) {
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!video.videoWidth) return;
+    var sx = w / video.videoWidth, sy = h / video.videoHeight;
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1); /* video is mirrored */
+    if (landmarks) {
+      var minX = 1, minY = 1, maxX = 0, maxY = 0;
+      landmarks.forEach(function (p) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      });
+      ctx.strokeStyle = '#4ade80';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(minX * video.videoWidth * sx, minY * video.videoHeight * sy,
+        (maxX - minX) * video.videoWidth * sx, (maxY - minY) * video.videoHeight * sy);
+    }
+    (phones || []).forEach(function (b) {
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(b.originX * sx, b.originY * sy, b.width * sx, b.height * sy);
+      ctx.fillStyle = '#f87171';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('PHONE', b.originX * sx + 4, b.originY * sy + 18);
+    });
+    ctx.restore();
+  }
+
+  function loop(ts) {
+    if (!monitoring) return;
+    rafId = requestAnimationFrame(loop);
+    var now = performance.now();
+    if (lastTick) {
+      var dt = now - lastTick;
+      if (!currentAlert) focusMs += dt;
+    }
+    lastTick = now;
+
+    if (window.__detectError) {
+      setStatus(window.__detectError, 'err');
+    } else if (window.__detectFrame && video.readyState >= 2) {
+      if (ts <= lastTs) return;
+      lastTs = ts;
+      var result = null;
+      try { result = window.__detectFrame(video, ts); } catch (e) { result = null; }
+      if (result) {
+        var ratio = window.StudyLogic.eyeRatio(result.landmarks);
+        if (ratio !== null) {
+          ratioVal.textContent = ratio.toFixed(1);
+          ratioVal.classList.toggle('closed', ratio < window.StudyLogic.EYE_CLOSED_RATIO);
+          ratioState.textContent = ratio < window.StudyLogic.EYE_CLOSED_RATIO ? '(eyes closed)' : '(eyes open)';
+        } else {
+          ratioVal.textContent = '—';
+          ratioState.textContent = '(no face)';
+        }
+        var res = tracker.update({
+          facePresent: !!result.landmarks,
+          ratio: ratio,
+          phonePresent: result.phones && result.phones.length > 0
+        });
+        if (res.changed) {
+          if (res.alert) {
+            counts[res.alert]++;
+            updateStats();
+            showAlert(res.alert);
+          } else {
+            clearAlert();
+          }
+        }
+        drawOverlay(result.landmarks, result.phones);
+        if (!currentAlert) setStatus('Monitoring — stay focused', 'live');
+        else setStatus('Distraction detected!', 'warn');
+      }
+    } else if (!window.__detectFrame) {
+      setStatus('Loading AI models… (first load needs internet)', 'warn');
+    }
+    updateStats();
+  }
+
+  /* ---- Camera ---- */
+  function startCamera() {
+    camError.classList.remove('show');
+    setStatus('Opening camera…', 'warn');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('This device has no camera.', 'err');
+      camError.classList.add('show');
+      return Promise.resolve(false);
+    }
+    return navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    }).then(function (s) {
+      stream = s;
+      video.srcObject = s;
+      placeholder.style.display = 'none';
+      return new Promise(function (resolve) {
+        video.onloadedmetadata = function () {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          resolve(true);
+        };
+        setTimeout(function () { resolve(true); }, 3000);
+      });
+    }).catch(function () {
+      setStatus('Camera unavailable.', 'err');
+      camError.classList.add('show');
+      return false;
+    });
+  }
+
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      stream = null;
+    }
+    video.srcObject = null;
+    placeholder.style.display = 'flex';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  /* ---- Buttons ---- */
+  function startMonitoring() {
+    ensureAudio();
+    startBtn.disabled = true;
+    startCamera().then(function (ok) {
+      startBtn.disabled = false;
+      if (!ok) return;
+      monitoring = true;
+      tracker.reset();
+      clearAlert();
+      lastTick = 0;
+      lastTs = 0;
+      startBtn.textContent = '■ STOP MONITORING';
+      startBtn.className = 'btn btn-stop';
+      setStatus('Monitoring — stay focused', 'live');
+      rafId = requestAnimationFrame(loop);
+    });
+  }
+
+  function stopMonitoring() {
+    monitoring = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    stopCamera();
+    camError.classList.remove('show');
+    clearAlert();
+    tracker.reset();
+    ratioVal.textContent = '—';
+    ratioState.textContent = '';
+    startBtn.textContent = '▶ START MONITORING';
+    startBtn.className = 'btn btn-start';
+    setStatus('Tap START to begin');
+  }
+
+  startBtn.addEventListener('click', function () {
+    if (monitoring) stopMonitoring();
+    else startMonitoring();
+  });
+
+  document.getElementById('retryBtn').addEventListener('click', function () {
+    if (!monitoring) startMonitoring();
+  });
+
+  muteBtn.addEventListener('click', function () {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇 Sound: OFF' : '🔔 Sound: ON';
+    if (muted) stopAlarm();
+    else if (currentAlert) startAlarm(currentAlert);
+  });
+
+  updateStats();
+
+  /* ---- PWA: register service worker (root scope) ---- */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () { /* offline use only */ });
+    });
+  }
+})();
+</script>
+
+<script type="module">
+/* ---- MediaPipe Tasks Vision (loaded from CDN; needs internet on first load) ---- */
+(async function () {
+  try {
+    var vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.x/vision_bundle.mjs');
+    var fileset = await vision.FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.x/wasm');
+    var face = await vision.FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+        delegate: 'GPU'
+      },
+      runningMode: 'VIDEO',
+      numFaces: 1
+    });
+    var detector = await vision.ObjectDetector.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite',
+        delegate: 'GPU'
+      },
+      runningMode: 'VIDEO',
+      scoreThreshold: 0.5,
+      maxResults: 5
+    });
+    window.__detectFrame = function (video, ts) {
+      var fl = face.detectForVideo(video, ts);
+      var od = detector.detectForVideo(video, ts);
+      var landmarks = (fl && fl.faceLandmarks && fl.faceLandmarks[0]) ? fl.faceLandmarks[0] : null;
+      var phones = [];
+      if (od && od.detections) {
+        od.detections.forEach(function (d) {
+          (d.categories || []).forEach(function (c) {
+            if (c.categoryName === 'cell phone' && c.score > 0.5) phones.push(d.boundingBox);
+          });
+        });
+      }
+      return { landmarks: landmarks, phones: phones };
+    };
+    window.__detectReady = true;
+  } catch (e) {
+    window.__detectError = 'Detection needs internet for the first load — the AI models could not be downloaded. Check your connection and reload.';
+  }
+})();
+</script>
+</body>
+</html>
